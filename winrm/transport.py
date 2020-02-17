@@ -167,21 +167,10 @@ class Transport(object):
         settings = session.merge_environment_settings(url=self.endpoint,
                       proxies=proxies, stream=None, verify=None, cert=None)
 
-        global DISPLAYED_PROXY_WARNING
-
-        # We want to eventually stop reading proxy information from the environment.
-        # Also only display the warning once. This method can be called many times during an application's runtime.
-        if not DISPLAYED_PROXY_WARNING and self.proxy == 'legacy_requests' and (
-                'http' in settings['proxies'] or 'https' in settings['proxies']):
-            message = "'pywinrm' will use an environment defined proxy. This feature will be disabled in " \
-                      "the future, please specify it explicitly."
-            if 'http' in settings['proxies']:
-                message += " HTTP proxy {proxy} discovered.".format(proxy=settings['proxies']['http'])
-            if 'https' in settings['proxies']:
-                message += " HTTPS proxy {proxy} discovered.".format(proxy=settings['proxies']['https'])
-
-            DISPLAYED_PROXY_WARNING = True
-            warnings.warn(message, DeprecationWarning)
+        # Retry on connection errors, with a backoff factor
+        retries = requests.packages.urllib3.util.retry.Retry(total=4, connect=4, status=4, read=0, backoff_factor=2.0, status_forcelist=(413, 425, 429, 503))
+        session.mount('http://', requests.adapters.HTTPAdapter(max_retries=retries))
+        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
 
         session.proxies = settings['proxies']
 
